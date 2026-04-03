@@ -1,0 +1,37 @@
+### Project plan (start-to-first-working-feature)
+
+## Phase 0 — Foundations (today)
+- **Database ready**: make sure Postgres is running and `.env` has correct `DATABASE_URL`.
+- **Prisma migration**: run `npx prisma migrate dev --name init` to create all tables from `prisma/schema.prisma`.
+- **Seed data (optional but recommended)**: add `prisma/seed.ts` to insert 1 active `Year`, a few `AnimalType`, and sample `Admin`.
+
+## Phase 1 — Auth + Admin base
+- **Admin login**: build simple auth for `Admin` (session cookie).
+- **RBAC**: enforce `AdminRole` (`SUPER_ADMIN/ADMIN/STAFF`) in server actions / route handlers.
+- **Layout**: create `/admin` area shell (sidebar + topbar), protected by auth.
+
+## Phase 2 — Core flows (MVP)
+- **Customers CRUD**: create/list/update customers.
+- **Stock setup**: manage `Year`, `AnimalType`, `AnimalStock`.
+- **Pricing**: CRUD `DayPricing` per `AnimalStock`.
+- **Bookings**: create booking → allocate portions → generate `bookingRef`.
+- **Payments**: submit/approve/reject payment.
+- **Distribution log**: mark booking distributed + record items/admin.
+
+## Phase 3 — Notifications + reports
+- **Notification log**: write entries to `Notification` table on key events.
+- **Reports dashboard**: totals by year/day/type, pending payments, remaining portions.
+
+## Phase 4 — Production hardening
+- **Validation**: zod schemas for inputs.
+- **Transactions**: use Prisma transactions for booking+portion allocation.
+- **Audit + backups**: DB backup strategy, admin audit trail, monitoring.
+
+### Immediate next step (do this first)
+Run migration (after fixing Postgres credentials):
+
+```bash
+npx prisma migrate dev --name init
+```
+
+If you tell me how you’re running Postgres (local app/brew/remote), I’ll give you the exact `DATABASE_URL` and commands to get Phase 0 done quickly.
