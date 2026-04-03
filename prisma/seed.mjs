@@ -30,14 +30,54 @@ async function main() {
     },
   });
 
+  await prisma.animalConfig.createMany({
+    data: [
+      {
+        kind: "GOAT",
+        label: "Goat",
+        portionsPerAnimal: 1,
+        payasPerAnimal: 4,
+        description: "1 portion, 4 payas per animal",
+      },
+      {
+        kind: "COW_MALE",
+        label: "Male Cow",
+        portionsPerAnimal: 7,
+        payasPerAnimal: 4,
+        description: "7 portions, 4 payas per animal",
+      },
+      {
+        kind: "COW_FEMALE",
+        label: "Female Cow",
+        portionsPerAnimal: 7,
+        payasPerAnimal: 4,
+        description: "7 portions, 4 payas per animal",
+      },
+      {
+        kind: "CAMEL",
+        label: "Camel",
+        portionsPerAnimal: 14,
+        payasPerAnimal: 4,
+        description: "14 portions, 4 payas per animal",
+      },
+    ],
+    skipDuplicates: true,
+  });
+
   const currentYear = new Date().getFullYear();
+  const eidDay1 = new Date(`${currentYear}-06-16T00:00:00.000Z`);
+  const eidDay2 = new Date(`${currentYear}-06-17T00:00:00.000Z`);
+  const eidDay3 = new Date(`${currentYear}-06-18T00:00:00.000Z`);
+
   const year = await prisma.year.upsert({
     where: { year: currentYear },
     update: { isActive: true },
     create: {
       year: currentYear,
       label: `Eid ul Adha ${currentYear}`,
-      eidDate: new Date(`${currentYear}-06-01T00:00:00.000Z`),
+      eidDay1,
+      eidDay2,
+      eidDay3,
       isActive: true,
     },
   });
@@ -45,33 +85,6 @@ async function main() {
   await prisma.year.updateMany({
     where: { id: { not: year.id } },
     data: { isActive: false },
-  });
-
-  await prisma.animalType.createMany({
-    data: [
-      {
-        name: "Goat",
-        gender: null,
-        totalPortions: 1,
-        payasThreshold: 0,
-        description: "Single portion",
-      },
-      {
-        name: "Cow",
-        gender: null,
-        totalPortions: 7,
-        payasThreshold: 4,
-        description: "7 portions",
-      },
-      {
-        name: "Camel",
-        gender: null,
-        totalPortions: 14,
-        payasThreshold: 8,
-        description: "14 portions",
-      },
-    ],
-    skipDuplicates: true,
   });
 }
 
@@ -84,4 +97,3 @@ main()
     await prisma.$disconnect();
     process.exit(1);
   });
-

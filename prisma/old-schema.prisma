@@ -1,0 +1,231 @@
+// Qurbani Management System — Prisma Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// YEARS — one record per Eid season
+// ─────────────────────────────────────────────
+model Year {
+  id        Int      @id @default(autoincrement())
+  year      Int      @unique
+  label     String // e.g. "Eid ul Adha 2026"
+  eidDate   DateTime @map("eid_date")
+  isActive  Boolean  @default(false) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  animalStock AnimalStock[]
+  bookings    Booking[]
+
+  @@map("years")
+}
+
+// ─────────────────────────────────────────────
+// ANIMAL TYPES — master list (goat, male cow, female cow, camel)
+// ─────────────────────────────────────────────
+model AnimalType {
+  id             Int     @id @default(autoincrement())
+  name           String // e.g. "Cow", "Goat", "Camel"
+  gender         String? // "male" | "female" | null (for goat/camel)
+  totalPortions  Int     @map("total_portions") // goat=1, cow=7, camel=14
+  payasThreshold Int     @map("payas_threshold") // goat=0, cow=4, camel=8
+  description    String? @db.Text
+
+  animalStock AnimalStock[]
+
+  @@map("animal_types")
+}
+
+// ─────────────────────────────────────────────
+// ANIMAL STOCK — actual animals available per year
+// ─────────────────────────────────────────────
+model AnimalStock {
+  id             Int      @id @default(autoincrement())
+  yearId         Int      @map("year_id")
+  animalTypeId   Int      @map("animal_type_id")
+  tagNumber      String // unique tag e.g. "COW-M-001"
+  bookedPortions Int      @default(0) @map("booked_portions")
+  isAvailable    Boolean  @default(true) @map("is_available")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  year       Year         @relation(fields: [yearId], references: [id])
+  animalType AnimalType   @relation(fields: [animalTypeId], references: [id])
+  dayPricing DayPricing[]
+  bookings   Booking[]
+
+  @@map("animal_stock")
+}
+
+// ─────────────────────────────────────────────
+// DAY PRICING — different price per day of Eid
+// ─────────────────────────────────────────────
+model DayPricing {
+  id              Int     @id @default(autoincrement())
+  animalStockId   Int     @map("animal_stock_id")
+  dayNumber       Int     @map("day_number") // 1, 2, or 3
+  pricePerPortion Decimal @map("price_per_portion") @db.Decimal(10, 2)
+  fullAnimalPrice Decimal @map("full_animal_price") @db.Decimal(10, 2)
+
+  animalStock AnimalStock @relation(fields: [animalStockId], references: [id])
+  bookings    Booking[]
+
+  @@unique([animalStockId, dayNumber])
+  @@map("day_pricing")
+}
+
+// ─────────────────────────────────────────────
+// CUSTOMERS — reusable across years (CRM)
+// ─────────────────────────────────────────────
+model Customer {
+  id        Int      @id @default(autoincrement())
+  fullName  String   @map("full_name")
+  phone     String
+  cnic      String   @unique
+  email     String?
+  whatsapp  String?
+  address   String?  @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  bookings Booking[]
+
+  @@map("customers")
+}
+
+// ─────────────────────────────────────────────
+// BOOKINGS — core table
+// ─────────────────────────────────────────────
+model Booking {
+  id                Int           @id @default(autoincrement())
+  bookingRef        String        @unique @map("booking_ref") // e.g. "QRB-2026-00142"
+  yearId            Int           @map("year_id")
+  customerId        Int           @map("customer_id")
+  animalStockId     Int           @map("animal_stock_id")
+  dayPricingId      Int           @map("day_pricing_id")
+  portionsCount     Int           @map("portions_count")
+  portionNumbers    String        @map("portion_numbers") // e.g. "1,2,3"
+  isPayasEligible   Boolean       @default(false) @map("is_payas_eligible")
+  wantsMeat         Boolean       @default(true) @map("wants_meat")
+  masjidDistributes Boolean       @default(false) @map("masjid_distributes")
+  status            BookingStatus @default(PENDING)
+  notes             String?       @db.Text
+  bookedAt          DateTime      @default(now()) @map("booked_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+
+  year          Year             @relation(fields: [yearId], references: [id])
+  customer      Customer         @relation(fields: [customerId], references: [id])
+  animalStock   AnimalStock      @relation(fields: [animalStockId], references: [id])
+  dayPricing    DayPricing       @relation(fields: [dayPricingId], references: [id])
+  payment       Payment?
+  notifications Notification[]
+  distribution  DistributionLog?
+
+  @@map("bookings")
+}
+
+enum BookingStatus {
+  PENDING
+  PAYMENT_PENDING
+  CONFIRMED
+  DISTRIBUTED
+  CANCELLED
+}
+
+// ─────────────────────────────────────────────
+// PAYMENTS — one per booking
+// ─────────────────────────────────────────────
+model Payment {
+  id            Int           @id @default(autoincrement())
+  bookingId     Int           @unique @map("booking_id")
+  amountDue     Decimal       @map("amount_due") @db.Decimal(10, 2)
+  amountPaid    Decimal?      @map("amount_paid") @db.Decimal(10, 2)
+  paymentMethod String?       @map("payment_method")
+  status        PaymentStatus @default(UNPAID)
+  approvedById  Int?          @map("approved_by_id")
+  receiptNote   String?       @map("receipt_note") @db.Text
+  paidAt        DateTime?     @map("paid_at")
+  approvedAt    DateTime?     @map("approved_at")
+  createdAt     DateTime      @default(now()) @map("created_at")
+
+  booking    Booking @relation(fields: [bookingId], references: [id])
+  approvedBy Admin?  @relation(fields: [approvedById], references: [id])
+
+  @@map("payments")
+}
+
+enum PaymentStatus {
+  UNPAID
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+// ─────────────────────────────────────────────
+// ADMINS
+// ─────────────────────────────────────────────
+model Admin {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String   @unique
+  password  String
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  approvedPayments Payment[]
+  distributionLogs DistributionLog[]
+
+  @@map("admins")
+}
+
+// ─────────────────────────────────────────────
+// NOTIFICATIONS — log every message sent
+// ─────────────────────────────────────────────
+model Notification {
+  id        Int                 @id @default(autoincrement())
+  bookingId Int                 @map("booking_id")
+  channel   NotificationChannel
+  type      NotificationType
+  status    String              @default("sent")
+  sentAt    DateTime            @default(now()) @map("sent_at")
+
+  booking Booking @relation(fields: [bookingId], references: [id])
+
+  @@map("notifications")
+}
+
+enum NotificationChannel {
+  EMAIL
+  SMS
+  WHATSAPP
+}
+
+enum NotificationType {
+  BOOKING_CONFIRMED
+  PAYMENT_APPROVED
+  EID_REMINDER
+  DISTRIBUTION_DONE
+  YEARLY_OUTREACH
+}
+
+// ─────────────────────────────────────────────
+// DISTRIBUTION LOG — Eid day meat collection
+// ─────────────────────────────────────────────
+model DistributionLog {
+  id            Int      @id @default(autoincrement())
+  bookingId     Int      @unique @map("booking_id")
+  adminId       Int      @map("admin_id")
+  itemsGiven    String   @map("items_given") @db.Text
+  verifiedBy    String?  @map("verified_by")
+  distributedAt DateTime @default(now()) @map("distributed_at")
+
+  booking Booking @relation(fields: [bookingId], references: [id])
+  admin   Admin   @relation(fields: [adminId], references: [id])
+
+  @@map("distribution_log")
+}
