@@ -33,28 +33,28 @@ async function main() {
   await prisma.animalConfig.createMany({
     data: [
       {
-        kind: "GOAT",
+        code: "GOAT",
         label: "Goat",
         portionsPerAnimal: 1,
         payasPerAnimal: 4,
         description: "1 portion, 4 payas per animal",
       },
       {
-        kind: "COW_MALE",
+        code: "COW_MALE",
         label: "Male Cow",
         portionsPerAnimal: 7,
         payasPerAnimal: 4,
         description: "7 portions, 4 payas per animal",
       },
       {
-        kind: "COW_FEMALE",
+        code: "COW_FEMALE",
         label: "Female Cow",
         portionsPerAnimal: 7,
         payasPerAnimal: 4,
         description: "7 portions, 4 payas per animal",
       },
       {
-        kind: "CAMEL",
+        code: "CAMEL",
         label: "Camel",
         portionsPerAnimal: 14,
         payasPerAnimal: 4,

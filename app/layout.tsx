@@ -20,6 +20,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Qurbani Management",
   description: "Qurbani booking and operations",
+  icons: {
+    icon: "/mask-icon.svg",
+  },
 };
 
 export default function RootLayout({

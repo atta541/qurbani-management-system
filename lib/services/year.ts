@@ -57,7 +57,6 @@ async function listYearsForAdminUncached(limit: number): Promise<YearListItem[]>
   logYearsCacheDev("Prisma findMany → years table (cache bypass or Data Cache miss)", {
     limit,
   });
-  console.log("🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥 listYearsForAdminUncached EXECUTED");
   return prisma.year.findMany({
     select: {
       id: true,

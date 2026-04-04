@@ -1,38 +1,141 @@
 "use client";
 
-import { Calendar, ChevronLeft, Menu, PanelLeft } from "lucide-react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import * as React from "react";
-
-import { adminNavItems } from "@/components/admin/admin-nav";
+import { setActiveYearAction } from "@/app/admin/(protected)/season/years/actions";
+import {
+  adminNavEntries,
+  adminNavEntryIsActive,
+  type AdminNavEntry,
+  type AdminNavLink,
+} from "@/components/admin/admin-nav";
 import { ThemeSettingsSheet } from "@/components/theme-settings-sheet";
 import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/sonner";
 import { logoutAction } from "@/app/admin/(auth)/login/actions";
 import { cn } from "@/lib/utils";
+import {
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
+  Menu,
+  PanelLeft,
+} from "lucide-react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import * as React from "react";
 
 const STORAGE_KEY = "admin-sidebar-collapsed";
+const SEASON_NAV_EXPANDED_KEY = "admin-sidebar-season-expanded";
 
-/** Serializable snapshot of `Year` where `isActive` is true (from server layout). */
+/** Serializable snapshot of active `Year` (from server layout). */
 export type AdminActiveSeason = {
+  id: number;
   /** Same as DB `Year.year` (e.g. 2026). */
   seasonYear: number;
   label: string;
 };
 
+export type AdminSeasonOption = {
+  id: number;
+  year: number;
+  label: string;
+};
+
+function HeaderSeasonSelect({
+  activeSeason,
+  seasonOptions,
+}: {
+  activeSeason: AdminActiveSeason | null;
+  seasonOptions: AdminSeasonOption[];
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = React.useTransition();
+
+  const value = activeSeason ? String(activeSeason.id) : "";
+
+  return (
+    <div className="flex min-w-0 max-w-full flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
+      <label className="sr-only" htmlFor="header-active-season">
+        Active season
+      </label>
+      <select
+        id="header-active-season"
+        className={cn(
+          "h-9 max-w-full min-w-0 flex-1 rounded-md border border-input bg-background px-2 py-1 text-sm shadow-xs outline-none",
+          "focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50",
+          "disabled:cursor-not-allowed disabled:opacity-50",
+          "md:max-w-[min(280px,42vw)]",
+        )}
+        value={value}
+        disabled={pending || seasonOptions.length === 0}
+        onChange={(e) => {
+          const id = Number(e.target.value);
+          if (!Number.isFinite(id) || id <= 0) return;
+          if (activeSeason && id === activeSeason.id) return;
+          startTransition(async () => {
+            const fd = new FormData();
+            fd.set("yearId", String(id));
+            const r = await setActiveYearAction(fd);
+            if (!r.ok) {
+              toast.error(r.error);
+              return;
+            }
+            toast.success("Active season updated.");
+            router.refresh();
+          });
+        }}
+      >
+        {seasonOptions.length === 0 ? (
+          <option value="">No seasons yet</option>
+        ) : (
+          <>
+            {!activeSeason ? (
+              <option value="" disabled>
+                Select active season…
+              </option>
+            ) : null}
+            {seasonOptions.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.label} ({o.year})
+              </option>
+            ))}
+          </>
+        )}
+      </select>
+      <Link
+        href="/admin/season/years"
+        className="shrink-0 text-xs font-medium text-primary underline-offset-2 hover:underline"
+      >
+        Manage seasons
+      </Link>
+    </div>
+  );
+}
+
+function isLink(entry: AdminNavEntry): entry is AdminNavLink {
+  return entry.type === "link";
+}
+
+function pathIsActive(pathname: string, href: string) {
+  return href === "/admin"
+    ? pathname === "/admin"
+    : pathname === href || pathname.startsWith(`${href}/`);
+}
+
 export function AdminAppShell({
   adminEmail,
   activeSeason,
+  seasonOptions,
   children,
 }: {
   adminEmail: string;
-  /** Null when no season is marked active — prompt admin to choose one. */
   activeSeason: AdminActiveSeason | null;
+  seasonOptions: AdminSeasonOption[];
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = React.useState(false);
   const [mobileOpen, setMobileOpen] = React.useState(false);
+  const [seasonNavOpen, setSeasonNavOpen] = React.useState(true);
 
   React.useEffect(() => {
     try {
@@ -50,6 +153,23 @@ export function AdminAppShell({
       /* ignore */
     }
   }, [collapsed]);
+
+  React.useEffect(() => {
+    try {
+      const v = localStorage.getItem(SEASON_NAV_EXPANDED_KEY);
+      if (v === "false") setSeasonNavOpen(false);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(SEASON_NAV_EXPANDED_KEY, seasonNavOpen ? "true" : "false");
+    } catch {
+      /* ignore */
+    }
+  }, [seasonNavOpen]);
 
   React.useEffect(() => setMobileOpen(false), [pathname]);
 
@@ -107,30 +227,137 @@ export function AdminAppShell({
         </div>
 
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-2">
-          {adminNavItems.map((item) => {
-            const active =
-              item.href === "/admin"
-                ? pathname === "/admin"
-                : pathname === item.href || pathname.startsWith(`${item.href}/`);
-            const Icon = item.icon;
+          {adminNavEntries.map((entry) => {
+            if (isLink(entry)) {
+              const active = pathIsActive(pathname, entry.href);
+              const Icon = entry.icon;
+              return (
+                <Link
+                  key={entry.href}
+                  href={entry.href}
+                  title={collapsed ? entry.title : undefined}
+                  aria-current={active ? "page" : undefined}
+                  className={cn(
+                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+                    "text-sidebar-foreground/85 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                    active &&
+                      "bg-sidebar-primary font-semibold text-sidebar-primary-foreground shadow-sm ring-1 ring-sidebar-ring/35",
+                    !active && "font-medium",
+                    collapsed && "justify-center px-0",
+                  )}
+                >
+                  <Icon className={cn("size-5 shrink-0", active ? "opacity-100" : "opacity-90")} />
+                  {!collapsed ? <span>{entry.title}</span> : null}
+                </Link>
+              );
+            }
+
+            const group = entry;
+            const groupActive = adminNavEntryIsActive(pathname, group);
+            const GroupIcon = group.icon;
+
+            if (collapsed) {
+              return (
+                <Link
+                  key={group.title}
+                  href={group.href}
+                  title={group.title}
+                  aria-current={groupActive ? "page" : undefined}
+                  className={cn(
+                    "flex items-center justify-center rounded-lg px-0 py-2 text-sm transition-colors",
+                    "text-sidebar-foreground/85 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                    groupActive &&
+                      "bg-sidebar-primary font-semibold text-sidebar-primary-foreground shadow-sm ring-1 ring-sidebar-ring/35",
+                    !groupActive && "font-medium",
+                  )}
+                >
+                  <GroupIcon
+                    className={cn("size-5 shrink-0", groupActive ? "opacity-100" : "opacity-90")}
+                  />
+                </Link>
+              );
+            }
+
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                title={collapsed ? item.title : undefined}
-                aria-current={active ? "page" : undefined}
-                className={cn(
-                  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
-                  "text-sidebar-foreground/85 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                  active &&
-                    "bg-sidebar-primary font-semibold text-sidebar-primary-foreground shadow-sm ring-1 ring-sidebar-ring/35",
-                  !active && "font-medium",
-                  collapsed && "justify-center px-0",
-                )}
-              >
-                <Icon className={cn("size-5 shrink-0", active ? "opacity-100" : "opacity-90")} />
-                {!collapsed ? <span>{item.title}</span> : null}
-              </Link>
+              <div key={group.title} className="flex flex-col">
+                <div className="flex min-w-0 items-center gap-0.5 rounded-lg pr-1 transition-colors hover:bg-sidebar-accent/50">
+                  <Link
+                    href={group.href}
+                    aria-current={
+                      pathIsActive(pathname, group.href) && pathname === group.href ? "page" : undefined
+                    }
+                    className={cn(
+                      "flex min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+                      "text-sidebar-foreground/85 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                      pathIsActive(pathname, group.href) &&
+                        pathname === group.href &&
+                        "bg-sidebar-primary font-semibold text-sidebar-primary-foreground shadow-sm ring-1 ring-sidebar-ring/35",
+                      !pathIsActive(pathname, group.href) && "font-medium",
+                    )}
+                  >
+                    <GroupIcon
+                      className={cn(
+                        "size-5 shrink-0",
+                        pathIsActive(pathname, group.href) && pathname === group.href
+                          ? "opacity-100"
+                          : "opacity-90",
+                      )}
+                    />
+                    <span className="min-w-0 flex-1 truncate text-left">{group.title}</span>
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => setSeasonNavOpen((o) => !o)}
+                    className={cn(
+                      "flex size-9 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/80 transition-colors",
+                      "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                    )}
+                    aria-expanded={seasonNavOpen}
+                    aria-controls="admin-nav-season-sub"
+                    title={seasonNavOpen ? "Collapse Season" : "Expand Season"}
+                  >
+                    <ChevronRight
+                      className={cn(
+                        "size-4 transition-transform duration-300 ease-out",
+                        seasonNavOpen && "rotate-90",
+                      )}
+                      aria-hidden
+                    />
+                  </button>
+                </div>
+                <div
+                  className={cn(
+                    "grid transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none",
+                    seasonNavOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+                  )}
+                >
+                  <div id="admin-nav-season-sub" className="min-h-0 overflow-hidden">
+                    <div className="ml-2 space-y-0.5 border-l border-sidebar-border/50 py-0.5 pl-2">
+                      {group.children.map((child) => {
+                        const active = pathIsActive(pathname, child.href);
+                        const CIcon = child.icon;
+                        return (
+                          <Link
+                            key={child.href}
+                            href={child.href}
+                            aria-current={active ? "page" : undefined}
+                            className={cn(
+                              "flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors",
+                              "text-sidebar-foreground/85 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                              active &&
+                                "bg-sidebar-primary font-semibold text-sidebar-primary-foreground shadow-sm ring-1 ring-sidebar-ring/35",
+                              !active && "font-medium",
+                            )}
+                          >
+                            <CIcon className={cn("size-4 shrink-0", active ? "opacity-100" : "opacity-90")} />
+                            <span className="truncate">{child.title}</span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
             );
           })}
         </nav>
@@ -214,12 +441,12 @@ export function AdminAppShell({
           collapsed ? "md:pl-14" : "md:pl-64",
         )}
       >
-        <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background/80 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <header className="sticky top-0 z-20 flex min-h-14 shrink-0 flex-wrap items-center gap-3 border-b border-border bg-background/80 px-3 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/60 md:flex-nowrap md:py-0">
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            className="size-9 px-0 md:hidden"
+            className="size-9 shrink-0 px-0 md:hidden"
             onClick={() => setMobileOpen(true)}
             aria-label="Open menu"
           >
@@ -230,7 +457,7 @@ export function AdminAppShell({
             type="button"
             variant="ghost"
             size="sm"
-            className="hidden size-9 px-0 md:inline-flex"
+            className="hidden size-9 shrink-0 px-0 md:inline-flex"
             onClick={() => setCollapsed((c) => !c)}
             aria-label="Toggle sidebar"
             title="Toggle sidebar (⌘B / Ctrl+B)"
@@ -239,64 +466,21 @@ export function AdminAppShell({
           </Button>
 
           <div className="min-w-0 flex-1 text-sm">
-            <div className="flex flex-col gap-0.5 sm:flex-row sm:flex-wrap sm:items-baseline sm:gap-x-3">
-              <span className="truncate">
+            <div className="flex flex-col gap-2 sm:gap-1.5">
+              <div className="truncate">
                 <span className="hidden text-muted-foreground sm:inline">Signed in as </span>
                 <span className="font-medium text-foreground">{adminEmail}</span>
-              </span>
-              {activeSeason ? (
-                <span className="hidden items-baseline gap-1.5 text-muted-foreground md:inline-flex">
-                  <span className="shrink-0">·</span>
-                  <span className="shrink-0">Season</span>
-                  <span
-                    className="truncate font-medium text-foreground"
-                    title={`${activeSeason.label} (${activeSeason.seasonYear})`}
-                  >
-                    {activeSeason.label}
-                    <span className="ml-1 tabular-nums font-normal text-muted-foreground">
-                      ({activeSeason.seasonYear})
-                    </span>
-                  </span>
-                  <Link
-                    href="/admin/season/years"
-                    className="shrink-0 text-xs font-medium text-primary underline-offset-2 hover:underline"
-                  >
-                    Change
-                  </Link>
-                </span>
-              ) : (
-                <Link
-                  href="/admin/season/years"
-                  className="hidden text-xs font-semibold text-amber-700 underline-offset-2 hover:underline dark:text-amber-400 md:inline"
-                >
-                  Select active season
-                </Link>
-              )}
+              </div>
+              <div className="flex min-w-0 flex-col gap-2 border-t border-border/60 pt-2 sm:flex-row sm:items-center sm:border-t-0 sm:pt-0 md:gap-3">
+                <span className="hidden shrink-0 text-muted-foreground md:inline">Season</span>
+                <HeaderSeasonSelect activeSeason={activeSeason} seasonOptions={seasonOptions} />
+              </div>
             </div>
           </div>
 
-          {/* Compact season chip on small screens (full details stay in sidebar + md+ header) */}
-          {activeSeason ? (
-            <Link
-              href="/admin/season/years"
-              className="flex shrink-0 items-center gap-1 rounded-md border border-border bg-muted/60 px-2 py-1 text-xs font-semibold tabular-nums text-foreground md:hidden"
-              title={`${activeSeason.label} (${activeSeason.seasonYear})`}
-            >
-              <Calendar className="size-3.5 text-emerald-600 dark:text-emerald-400" />
-              {activeSeason.seasonYear}
-            </Link>
-          ) : (
-            <Link
-              href="/admin/season/years"
-              className="shrink-0 rounded-md px-2 py-1 text-xs font-semibold text-amber-700 dark:text-amber-400 md:hidden"
-            >
-              Season
-            </Link>
-          )}
-
           <ThemeSettingsSheet />
 
-          <form action={logoutAction}>
+          <form action={logoutAction} className="shrink-0">
             <Button variant="outline" size="sm">
               Logout
             </Button>

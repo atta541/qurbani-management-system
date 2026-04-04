@@ -15,7 +15,7 @@
 //
 // KEY SCHEMA DECISIONS:
 //   - Pool-based: no individual animal records — admin sets totals.
-//   - AnimalConfig.id used as FK (not enum kind) — safe & conventional.
+//   - AnimalConfig.code (column `kind`) — string ids; admins can add types without migrations.
 //   - TimeSlot tracks totalPayas / bookedPayas (not "sets") — corrected model.
 //   - PaymentAttempt child table for full audit trail on payment rejections.
 //   - Notification.scheduledFor for queued reminder jobs.
@@ -34,15 +34,6 @@ datasource db {
 // ============================================================
 // ENUMS
 // ============================================================
-
-/// The four animal variants supported in Islamic Qurbani.
-/// Cow split into MALE / FEMALE — may have different pricing.
-enum AnimalKind {
-  GOAT
-  COW_MALE
-  COW_FEMALE
-  CAMEL
-}
 
 /// The three days of Eid-ul-Adha.
 enum EidDay {
@@ -148,27 +139,21 @@ model Year {
 }
 
 // ─────────────────────────────────────────────
-// ANIMAL CONFIG — fixed Islamic rules per animal kind.
-// Seeded once at setup. Never changed at runtime.
+// ANIMAL CONFIG — rules per animal type (masjid-defined).
 //
-//  Kind        | Portions | Payas
-//  ------------|----------|-------
-//  GOAT        |    1     |   4
-//  COW_MALE    |    7     |   4
-//  COW_FEMALE  |    7     |   4
-//  CAMEL       |   14     |   4
-//
-// payasPerAnimal is always 4 — Islamic rule, hardcoded.
-// Each payas goes to one portion (first come first served).
-// Portions beyond 4 in a cow/camel get no payas.
+// `code` is a stable machine id (DB column `kind` for history): e.g. GOAT, COW_MALE, BUFFALO.
+// Admins can add new types from the UI; use UPPER_SNAKE_CASE codes.
+// Typical defaults: goat 1 portion / 4 payas; cow 7/4; camel 14/4 — not enforced in DB.
 // ─────────────────────────────────────────────
 model AnimalConfig {
-  id                Int        @id @default(autoincrement())
-  kind              AnimalKind @unique
-  label             String                           // "Goat", "Male Cow", "Female Cow", "Camel"
-  portionsPerAnimal Int        @map("portions_per_animal")  // 1 / 7 / 7 / 14
-  payasPerAnimal    Int        @default(4) @map("payas_per_animal") // always 4
-  description       String?    @db.Text
+  id                Int     @id @default(autoincrement())
+  code              String  @unique @map("kind")
+  label             String
+  portionsPerAnimal Int     @map("portions_per_animal")
+  payasPerAnimal    Int     @default(4) @map("payas_per_animal")
+  description       String? @db.Text
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
 
   animalPools        AnimalPool[]
   slaughterSchedules SlaughterSchedule[]
@@ -234,20 +219,23 @@ model SlaughterSchedule {
 }
 
 // ─────────────────────────────────────────────
-// DAY PRICING — price per portion per animal kind per Eid day.
-// Admin sets once per year.
-// payasExtraCharge: optional extra fee if customer wants payas.
+// DAY PRICING — per animal kind per Eid day.
+// `pricePerPortion` is authoritative for bookings (hissa / portion count).
+// `totalPricePerAnimal` = full animal for that day; kept in sync with
+//   portionsPerAnimal × pricePerPortion (rounded) — see admin pricing UI.
+// payasExtraCharge: optional extra fee per portion if customer wants payas.
 // Set to 0 if payas are included free.
 // ─────────────────────────────────────────────
 model DayPricing {
-  id               Int      @id @default(autoincrement())
-  yearId           Int      @map("year_id")
-  animalConfigId   Int      @map("animal_config_id")
-  eidDay           EidDay   @map("eid_day")
-  pricePerPortion  Decimal  @map("price_per_portion") @db.Decimal(12, 2)
-  payasExtraCharge Decimal  @default(0) @map("payas_extra_charge") @db.Decimal(12, 2)
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  id                    Int      @id @default(autoincrement())
+  yearId                Int      @map("year_id")
+  animalConfigId        Int      @map("animal_config_id")
+  eidDay                EidDay   @map("eid_day")
+  pricePerPortion       Decimal  @map("price_per_portion") @db.Decimal(12, 2)
+  totalPricePerAnimal   Decimal  @default(0) @map("total_price_per_animal") @db.Decimal(12, 2)
+  payasExtraCharge      Decimal  @default(0) @map("payas_extra_charge") @db.Decimal(12, 2)
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
 
   year         Year         @relation(fields: [yearId], references: [id])
   animalConfig AnimalConfig @relation(fields: [animalConfigId], references: [id])
