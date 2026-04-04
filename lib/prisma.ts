@@ -9,5 +9,6 @@ export const prisma =
       process.env.NODE_ENV === "development" ? ["query", "warn", "error"] : ["warn", "error"],
   });
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+/** Reuse one client per isolate (Vercel serverless + dev HMR) to avoid exhausting DB connections. */
+globalForPrisma.prisma = prisma;
 

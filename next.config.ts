@@ -1,9 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
-  cacheComponents: true,
-
+  /* cacheComponents + legacy unstable_cache (e.g. year service) can break prod RSC; re-enable after migrating to `use cache`. */
 };
 
 export default nextConfig;
