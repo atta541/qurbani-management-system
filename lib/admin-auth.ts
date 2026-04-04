@@ -76,9 +76,13 @@ export async function verifyAdminCredentials(email: string, password: string) {
   });
   if (!admin?.isActive) return null;
 
-  const ok = await verify(admin.password, password);
-  if (!ok) return null;
-
-  return { id: admin.id };
+  try {
+    const ok = await verify(admin.password, password);
+    if (!ok) return null;
+    return { id: admin.id };
+  } catch {
+    // Corrupt hash or argon verify failure — treat as failed login, avoid 500
+    return null;
+  }
 }
 

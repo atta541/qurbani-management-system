@@ -1,16 +1,29 @@
 "use client";
 
 import Image from "next/image";
-import { useActionState } from "react";
+import { useRouter } from "next/navigation";
+import { useActionState, useEffect, useRef } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-import { loginAction } from "./actions";
+import { loginAction, type LoginActionState } from "./actions";
+
+const loginInitialState: LoginActionState = null;
 
 export default function LoginForm({ next }: { next?: string }) {
-  const [state, formAction, pending] = useActionState(loginAction, null);
+  const router = useRouter();
+  const [state, formAction, pending] = useActionState(loginAction, loginInitialState);
+  const handledOk = useRef(false);
+
+  useEffect(() => {
+    if (!state || !("ok" in state) || !state.ok) return;
+    if (handledOk.current) return;
+    handledOk.current = true;
+    router.push(state.next);
+    router.refresh();
+  }, [state, router]);
 
   return (
     <div className="mx-auto w-full max-w-md space-y-10">
@@ -64,7 +77,7 @@ export default function LoginForm({ next }: { next?: string }) {
             />
           </div>
 
-          {state?.error ? (
+          {state && "error" in state && state.error ? (
             <p className="text-sm font-medium text-destructive" role="alert">
               {state.error}
             </p>
