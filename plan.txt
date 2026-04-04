@@ -1,37 +1,115 @@
-### Project plan (start-to-first-working-feature)
+### Qurbani Management System — phased plan
 
-## Phase 0 — Foundations (today)
-- **Database ready**: make sure Postgres is running and `.env` has correct `DATABASE_URL`.
-- **Prisma migration**: run `npx prisma migrate dev --name init` to create all tables from `prisma/schema.prisma`.
-- **Seed data (optional but recommended)**: add `prisma/seed.ts` to insert 1 active `Year`, a few `AnimalType`, and sample `Admin`.
+Aligned with `prisma/schema.prisma` (pool-based stock, `TimeSlot` + payas, `PaymentAttempt`,
+`BookingSlip`, single `Admin` — no role tiers).
 
-## Phase 1 — Auth + Admin base
-- **Admin login**: build simple auth for `Admin` (session cookie).
-- **RBAC**: enforce `AdminRole` (`SUPER_ADMIN/ADMIN/STAFF`) in server actions / route handlers.
-- **Layout**: create `/admin` area shell (sidebar + topbar), protected by auth.
+---
 
-## Phase 2 — Core flows (MVP)
-- **Customers CRUD**: create/list/update customers.
-- **Stock setup**: manage `Year`, `AnimalType`, `AnimalStock`.
-- **Pricing**: CRUD `DayPricing` per `AnimalStock`.
-- **Bookings**: create booking → allocate portions → generate `bookingRef`.
-- **Payments**: submit/approve/reject payment.
-- **Distribution log**: mark booking distributed + record items/admin.
+## Phase 0 — Database & seed
 
-## Phase 3 — Notifications + reports
-- **Notification log**: write entries to `Notification` table on key events.
-- **Reports dashboard**: totals by year/day/type, pending payments, remaining portions.
+- Postgres running; `.env` has `DATABASE_URL`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`.
+- Apply schema: fresh `npx prisma migrate dev --name init` (or `db push` for local only).
+- `npx prisma generate`
+- Seed: **Admin**, **AnimalConfig** (4 kinds), **one active Year** with real `eidDay1`–`eidDay3` when known.
+- **Done when:** `prisma studio` shows `admins`, `animal_configs`, `years`.
 
-## Phase 4 — Production hardening
-- **Validation**: zod schemas for inputs.
-- **Transactions**: use Prisma transactions for booking+portion allocation.
-- **Audit + backups**: DB backup strategy, admin audit trail, monitoring.
+---
 
-### Immediate next step (do this first)
-Run migration (after fixing Postgres credentials):
+## Phase 1 — Admin auth & shell
+
+- Login against `Admin` (session or JWT).
+- Single access level — no `AdminRole` / RBAC.
+- `/admin` layout (nav for later modules), protected routes.
+- **Done when:** login, protected admin area, logout.
+
+---
+
+## Phase 2 — Season configuration (admin)
+
+Order matters; validate in app (not all rules are DB constraints):
+
+1. **Year** — CRUD; enforce exactly **one** `isActive` year.
+2. **AnimalPool** — per `(year, animalConfig)`: `totalAnimals`, derived `totalPortions` / `totalPayas`.
+3. **SlaughterSchedule** — per Eid day; sum of `animalsCount` = `AnimalPool.totalAnimals` per kind.
+4. **DayPricing** — per `(year, animalConfig, eidDay)`; `pricePerPortion`, `payasExtraCharge`.
+5. **TimeSlot** — per `(year, animalConfig, eidDay)`; `animalsAssigned` totals vs schedule for that day/kind.
+
+**Done when:** active year is fully configurable end-to-end with validation errors in UI.
+
+---
+
+## Phase 3 — Customers (CRM)
+
+- CRUD / search **Customer** (CNIC unique, phone, etc.).
+- Optional: find-by-CNIC before new booking.
+
+**Done when:** create/edit customer; attach to booking.
+
+---
+
+## Phase 4 — Bookings (core)
+
+- Create **Booking**: `year`, `customer`, `animalConfig`, `eidDay`, `timeSlot`, `dayPricing`.
+- **Transaction:** update `TimeSlot.bookedPortions`; if payas granted, `bookedPayas += portionsCount`.
+- Payas: `wantsPayas` → capacity check → `payasGranted`, `payasNote`; `totalAmount` from pricing + payas surcharge.
+- Set **`hissaIdentifier`**; generate **`bookingRef`**; statuses `DRAFT` / `PENDING` / … as needed.
+- Optional: **`createdByAdmin`** + `createdByAdminId` for counter bookings.
+- **Cancel:** decrement slot counters consistently.
+
+**Done when:** create/cancel keeps slot counters and amounts correct.
+
+---
+
+## Phase 5 — Payments
+
+- **Payment** per booking: `amountDue`, `amountPaid`, `status`.
+- Upload flow: `SUBMITTED` + new **PaymentAttempt** (attempt number, `receiptUrl`, …).
+- Admin approve/reject; `approvedById`, `rejectionNote`; resubmit = new attempt.
+
+**Done when:** upload → review → approve/reject with full history in `payment_attempts`.
+
+---
+
+## Phase 6 — Booking slip
+
+- After payment **APPROVED**: **BookingSlip** (`slipCode`, optional `pdfUrl`).
+- Show QR/code for collection; cancel booking → slip `CANCELLED`.
+
+**Done when:** approved booking has a valid slip path.
+
+---
+
+## Phase 7 — Distribution (Eid day)
+
+- Lookup by ref or `slipCode` / scan.
+- **DistributionLog:** `portionsGiven`, `payasGiven`, `slipVerified`, `meatGiven`, remarks; booking → `DISTRIBUTED`, slip → `USED`.
+
+**Done when:** one complete handover flow.
+
+---
+
+## Phase 8 — Notifications
+
+- **8a:** Insert **Notification** rows on events (DB log + admin list); no external send.
+- **8b:** Worker/cron: `scheduledFor` for reminders; send SMS/email/WhatsApp; update `status` / `sentAt` / `errorMsg`.
+
+**Done when:** 8a minimum; 8b when providers exist.
+
+---
+
+## Phase 9 — Reports & hardening
+
+- Dashboards: bookings by day/kind, pending payments, slot fill, payas usage.
+- Zod (or similar) on inputs; **Prisma transactions** on any booking/payment/slot updates.
+- Backups, monitoring, rate limits as needed for production.
+
+---
+
+### Immediate next step
 
 ```bash
 npx prisma migrate dev --name init
+npm run prisma:seed
 ```
 
-If you tell me how you’re running Postgres (local app/brew/remote), I’ll give you the exact `DATABASE_URL` and commands to get Phase 0 done quickly.
+Use a **fresh migration history** if the DB was created from the old schema (old migrations do not match the current `schema.prisma`).

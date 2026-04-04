@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft, Menu, PanelLeft } from "lucide-react";
+import { Calendar, ChevronLeft, Menu, PanelLeft } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import * as React from "react";
@@ -13,11 +13,21 @@ import { cn } from "@/lib/utils";
 
 const STORAGE_KEY = "admin-sidebar-collapsed";
 
+/** Serializable snapshot of `Year` where `isActive` is true (from server layout). */
+export type AdminActiveSeason = {
+  /** Same as DB `Year.year` (e.g. 2026). */
+  seasonYear: number;
+  label: string;
+};
+
 export function AdminAppShell({
   adminEmail,
+  activeSeason,
   children,
 }: {
   adminEmail: string;
+  /** Null when no season is marked active — prompt admin to choose one. */
+  activeSeason: AdminActiveSeason | null;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -67,9 +77,10 @@ export function AdminAppShell({
         />
       ) : null}
 
+      {/* Fixed full viewport height so main scroll does not move the rail (md+). Mobile: off-canvas overlay. */}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width,transform] duration-200 ease-linear md:relative md:translate-x-0",
+          "fixed inset-y-0 left-0 z-40 flex h-svh flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width,transform] duration-200 ease-linear",
           collapsed ? "w-14" : "w-64",
           mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
         )}
@@ -124,6 +135,56 @@ export function AdminAppShell({
           })}
         </nav>
 
+        {/* Active Eid season — mirrors Phase 2 `Year.isActive`; links to change it */}
+        <div
+          className={cn(
+            "border-t border-sidebar-border p-2",
+            !activeSeason && "bg-amber-500/5",
+          )}
+        >
+          {activeSeason ? (
+            collapsed ? (
+              <Link
+                href="/admin/season/years"
+                className="flex size-10 items-center justify-center rounded-lg text-sidebar-foreground transition-colors hover:bg-sidebar-accent"
+                title={`Active season: ${activeSeason.label} (${activeSeason.seasonYear})`}
+                aria-label={`Active season: ${activeSeason.label}, year ${activeSeason.seasonYear}. Change season.`}
+              >
+                <Calendar className="size-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+              </Link>
+            ) : (
+              <Link
+                href="/admin/season/years"
+                className="block rounded-lg bg-sidebar-accent/60 px-3 py-2.5 text-left transition-colors hover:bg-sidebar-accent"
+              >
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/60">
+                  Active season
+                </p>
+                <p className="mt-0.5 truncate text-sm font-semibold text-sidebar-foreground">
+                  {activeSeason.label}
+                </p>
+                <p className="text-xs tabular-nums text-sidebar-foreground/70">{activeSeason.seasonYear}</p>
+              </Link>
+            )
+          ) : collapsed ? (
+            <Link
+              href="/admin/season/years"
+              className="flex size-10 items-center justify-center rounded-lg text-amber-700 dark:text-amber-400"
+              title="No active season — select one"
+              aria-label="No active season. Open season settings."
+            >
+              <Calendar className="size-5 shrink-0" />
+            </Link>
+          ) : (
+            <Link
+              href="/admin/season/years"
+              className="block rounded-lg border border-dashed border-amber-500/40 px-3 py-2 text-sm font-medium text-amber-900 dark:text-amber-100"
+            >
+              No active season — select one
+            </Link>
+          )}
+        </div>
+
         <div className="border-t border-sidebar-border p-2">
           <button
             type="button"
@@ -146,7 +207,13 @@ export function AdminAppShell({
         </div>
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      {/* Reserve horizontal space on md+ so content sits beside fixed sidebar; width tracks collapse. */}
+      <div
+        className={cn(
+          "flex min-h-svh min-w-0 flex-1 flex-col transition-[padding] duration-200 ease-linear",
+          collapsed ? "md:pl-14" : "md:pl-64",
+        )}
+      >
         <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background/80 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/60">
           <Button
             type="button"
@@ -171,10 +238,61 @@ export function AdminAppShell({
             <PanelLeft className="size-5" />
           </Button>
 
-          <div className="flex-1 text-sm">
-            <span className="hidden text-muted-foreground sm:inline">Signed in as </span>
-            <span className="font-medium text-foreground">{adminEmail}</span>
+          <div className="min-w-0 flex-1 text-sm">
+            <div className="flex flex-col gap-0.5 sm:flex-row sm:flex-wrap sm:items-baseline sm:gap-x-3">
+              <span className="truncate">
+                <span className="hidden text-muted-foreground sm:inline">Signed in as </span>
+                <span className="font-medium text-foreground">{adminEmail}</span>
+              </span>
+              {activeSeason ? (
+                <span className="hidden items-baseline gap-1.5 text-muted-foreground md:inline-flex">
+                  <span className="shrink-0">·</span>
+                  <span className="shrink-0">Season</span>
+                  <span
+                    className="truncate font-medium text-foreground"
+                    title={`${activeSeason.label} (${activeSeason.seasonYear})`}
+                  >
+                    {activeSeason.label}
+                    <span className="ml-1 tabular-nums font-normal text-muted-foreground">
+                      ({activeSeason.seasonYear})
+                    </span>
+                  </span>
+                  <Link
+                    href="/admin/season/years"
+                    className="shrink-0 text-xs font-medium text-primary underline-offset-2 hover:underline"
+                  >
+                    Change
+                  </Link>
+                </span>
+              ) : (
+                <Link
+                  href="/admin/season/years"
+                  className="hidden text-xs font-semibold text-amber-700 underline-offset-2 hover:underline dark:text-amber-400 md:inline"
+                >
+                  Select active season
+                </Link>
+              )}
+            </div>
           </div>
+
+          {/* Compact season chip on small screens (full details stay in sidebar + md+ header) */}
+          {activeSeason ? (
+            <Link
+              href="/admin/season/years"
+              className="flex shrink-0 items-center gap-1 rounded-md border border-border bg-muted/60 px-2 py-1 text-xs font-semibold tabular-nums text-foreground md:hidden"
+              title={`${activeSeason.label} (${activeSeason.seasonYear})`}
+            >
+              <Calendar className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+              {activeSeason.seasonYear}
+            </Link>
+          ) : (
+            <Link
+              href="/admin/season/years"
+              className="shrink-0 rounded-md px-2 py-1 text-xs font-semibold text-amber-700 dark:text-amber-400 md:hidden"
+            >
+              Season
+            </Link>
+          )}
 
           <ThemeSettingsSheet />
 
@@ -185,7 +303,7 @@ export function AdminAppShell({
           </form>
         </header>
 
-        <main className="flex-1 overflow-auto p-4 md:p-6">{children}</main>
+        <main className="min-h-0 flex-1 overflow-auto p-4 md:p-6">{children}</main>
       </div>
     </div>
   );

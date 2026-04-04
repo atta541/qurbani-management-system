@@ -1,12 +1,12 @@
-import { AdminAppShell } from "@/components/admin/admin-app-shell";
-import { requireAdmin } from "@/lib/admin-auth";
+import { Suspense } from "react";
 
-export default async function AdminProtectedLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const admin = await requireAdmin();
+import { AdminProtectedShell } from "@/app/admin/(protected)/admin-protected-shell";
+import { AdminShellFallback } from "@/app/admin/(protected)/admin-shell-fallback";
 
-  return <AdminAppShell adminEmail={admin.email}>{children}</AdminAppShell>;
+export default function AdminProtectedLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <Suspense fallback={<AdminShellFallback />}>
+      <AdminProtectedShell>{children}</AdminProtectedShell>
+    </Suspense>
+  );
 }
